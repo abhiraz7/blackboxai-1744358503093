@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCQ Exam System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex flex-col items-center justify-center p-4">
+        <!-- Header -->
+        <div class="w-full max-w-2xl text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-4">MCQ Exam System</h1>
+            <p class="text-gray-600">Upload your Excel file containing questions and configure exam settings</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="w-full max-w-md bg-white rounded-lg shadow-md p-6">
+            <!-- File Upload Section -->
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Upload Excel File</label>
+                <div class="flex items-center justify-center w-full">
+                    <label class="w-full flex flex-col items-center px-4 py-6 bg-white rounded-lg border-2 border-dashed border-gray-300 cursor-pointer hover:bg-gray-50">
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                        </svg>
+                        <span class="mt-2 text-sm text-gray-600">Select Excel file</span>
+                        <input type="file" id="excelFile" accept=".xlsx,.xls" class="hidden" />
+                    </label>
+                </div>
+                <p id="fileName" class="mt-2 text-sm text-gray-500"></p>
+            </div>
+
+            <!-- Exam Configuration -->
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">
+                        Marks per Correct Answer
+                    </label>
+                    <input type="number" 
+                           id="correctMarks" 
+                           min="0" 
+                           step="0.5" 
+                           value="1" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">
+                        Negative Marks per Wrong Answer
+                    </label>
+                    <input type="number" 
+                           id="negativeMarks" 
+                           min="0" 
+                           step="0.5" 
+                           value="0.5" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+            </div>
+
+            <!-- Start Button -->
+            <button id="startExam" 
+                    class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400"
+                    disabled>
+                Start Exam
+            </button>
+        </div>
+    </div>
+
+    <!-- Error/Success Alert -->
+    <div id="alert" class="fixed bottom-4 right-4 max-w-sm rounded-lg shadow-lg hidden">
+        <div class="p-4"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('excelFile');
+            const fileNameDisplay = document.getElementById('fileName');
+            const startButton = document.getElementById('startExam');
+            const alertDiv = document.getElementById('alert');
+
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    fileNameDisplay.textContent = `Selected file: ${file.name}`;
+                    startButton.disabled = false;
+                } else {
+                    fileNameDisplay.textContent = '';
+                    startButton.disabled = true;
+                }
+            });
+
+            function showAlert(message, isError = false) {
+                const alertContent = alertDiv.querySelector('div');
+                alertContent.textContent = message;
+                alertContent.className = `p-4 ${isError ? 'bg-red-500' : 'bg-green-500'} text-white rounded-lg`;
+                alertDiv.classList.remove('hidden');
+                setTimeout(() => alertDiv.classList.add('hidden'), 3000);
+            }
+
+            startButton.addEventListener('click', async function() {
+                const file = fileInput.files[0];
+                const correctMarks = parseFloat(document.getElementById('correctMarks').value);
+                const negativeMarks = parseFloat(document.getElementById('negativeMarks').value);
+
+                if (!file || correctMarks < 0 || negativeMarks < 0) {
+                    showAlert('Please check all inputs are valid', true);
+                    return;
+                }
+
+                // Create FormData and append file
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    // Upload Excel file
+                    const uploadResponse = await fetch('http://localhost:8000/upload-excel', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!uploadResponse.ok) throw new Error('Failed to upload file');
+
+                    // Create exam session
+                    const sessionResponse = await fetch('http://localhost:8000/exam-session', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            correct_marks: correctMarks,
+                            negative_marks: negativeMarks
+                        })
+                    });
+
+                    if (!sessionResponse.ok) throw new Error('Failed to create exam session');
+
+                    const sessionData = await sessionResponse.json();
+                    
+                    // Redirect to exam page with session ID
+                    window.location.href = `exam.html?session=${sessionData.session_id}`;
+
+                } catch (error) {
+                    showAlert(error.message, true);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
