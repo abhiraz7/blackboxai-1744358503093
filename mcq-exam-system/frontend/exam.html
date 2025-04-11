@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCQ Exam</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen p-4">
+        <!-- Header with Timer -->
+        <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-sm p-4 mb-6 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-800">MCQ Exam</h1>
+            <div class="flex items-center space-x-4">
+                <div class="text-lg font-semibold" id="timer">00:00:00</div>
+                <button id="timerControl" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    Start Timer
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="max-w-4xl mx-auto">
+            <!-- Question Display -->
+            <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
+                <div class="mb-6">
+                    <span class="text-sm text-gray-500" id="questionNumber">Question 1 of X</span>
+                    <p class="text-lg font-medium mt-2" id="questionText">Loading question...</p>
+                </div>
+
+                <!-- Options -->
+                <div class="space-y-3" id="options">
+                    <!-- Options will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="flex justify-between items-center">
+                <button id="prevBtn" 
+                        class="px-6 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:bg-gray-300"
+                        disabled>
+                    Previous
+                </button>
+                <button id="questionListBtn" 
+                        class="px-6 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                    Questions List
+                </button>
+                <button id="nextBtn" 
+                        class="px-6 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+                    Next
+                </button>
+                <button id="endExamBtn" 
+                        class="px-6 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+                    End Exam
+                </button>
+            </div>
+        </div>
+
+        <!-- Questions List Modal -->
+        <div id="questionsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center">
+            <div class="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold">Questions List</h3>
+                    <button id="closeModal" class="text-gray-500 hover:text-gray-700">×</button>
+                </div>
+                <div id="questionsList" class="grid grid-cols-5 gap-2">
+                    <!-- Question numbers will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let sessionId = null;
+        let timerInterval = null;
+        let startTime = null;
+        let elapsedTime = 0;
+        let answers = new Map();
+
+        // Initialize exam
+        document.addEventListener('DOMContentLoaded', async function() {
+            // Get session ID from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            sessionId = urlParams.get('session');
+            
+            if (!sessionId) {
+                alert('Invalid session. Please start a new exam.');
+                window.location.href = 'index.html';
+                return;
+            }
+
+            try {
+                // Fetch questions
+                const response = await fetch(`http://localhost:8000/questions/${sessionId}`);
+                if (!response.ok) throw new Error('Failed to fetch questions');
+                
+                questions = await response.json();
+                updateQuestion();
+                setupQuestionsList();
+            } catch (error) {
+                alert('Error loading questions: ' + error.message);
+            }
+        });
+
+        // Timer Functions
+        function updateTimer() {
+            const time = new Date(elapsedTime);
+            document.getElementById('timer').textContent = time.toISOString().substr(11, 8);
+        }
+
+        document.getElementById('timerControl').addEventListener('click', function() {
+            const button = this;
+            if (!startTime) {
+                // Start timer
+                startTime = Date.now() - elapsedTime;
+                timerInterval = setInterval(() => {
+                    elapsedTime = Date.now() - startTime;
+                    updateTimer();
+                }, 1000);
+                button.textContent = 'Pause Timer';
+                button.classList.replace('bg-blue-500', 'bg-yellow-500');
+            } else {
+                // Pause timer
+                clearInterval(timerInterval);
+                elapsedTime = Date.now() - startTime;
+                startTime = null;
+                button.textContent = 'Resume Timer';
+                button.classList.replace('bg-yellow-500', 'bg-blue-500');
+            }
+        });
+
+        // Question Navigation
+        function updateQuestion() {
+            const question = questions[currentQuestionIndex];
+            document.getElementById('questionNumber').textContent = `Question ${currentQuestionIndex + 1} of ${questions.length}`;
+            document.getElementById('questionText').textContent = question.question_text;
+
+            const optionsContainer = document.getElementById('options');
+            optionsContainer.innerHTML = '';
+            
+            question.options.forEach((option, index) => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'flex items-center space-x-3';
+                
+                const id = `option${index}`;
+                optionDiv.innerHTML = `
+                    <input type="radio" id="${id}" name="answer" value="${option}"
+                           class="w-4 h-4 text-blue-600" 
+                           ${answers.get(currentQuestionIndex) === option ? 'checked' : ''}>
+                    <label for="${id}" class="text-gray-700">${option}</label>
+                `;
+                optionsContainer.appendChild(optionDiv);
+            });
+
+            // Update navigation buttons
+            document.getElementById('prevBtn').disabled = currentQuestionIndex === 0;
+            document.getElementById('nextBtn').disabled = currentQuestionIndex === questions.length - 1;
+
+            // Update questions list highlighting
+            updateQuestionsListHighlight();
+        }
+
+        // Navigation button handlers
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                updateQuestion();
+            }
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (currentQuestionIndex < questions.length - 1) {
+                currentQuestionIndex++;
+                updateQuestion();
+            }
+        });
+
+        // Answer selection handler
+        document.getElementById('options').addEventListener('change', async (e) => {
+            if (e.target.type === 'radio') {
+                const selectedAnswer = e.target.value;
+                answers.set(currentQuestionIndex, selectedAnswer);
+
+                try {
+                    await fetch('http://localhost:8000/submit-answer', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            question_id: questions[currentQuestionIndex].id,
+                            session_id: sessionId,
+                            selected_answer: selectedAnswer
+                        })
+                    });
+                } catch (error) {
+                    console.error('Failed to submit answer:', error);
+                }
+
+                updateQuestionsListHighlight();
+            }
+        });
+
+        // Questions List Modal
+        function setupQuestionsList() {
+            const list = document.getElementById('questionsList');
+            list.innerHTML = '';
+            
+            questions.forEach((_, index) => {
+                const button = document.createElement('button');
+                button.className = 'w-10 h-10 rounded border border-gray-300 hover:bg-gray-100';
+                button.textContent = index + 1;
+                button.addEventListener('click', () => {
+                    currentQuestionIndex = index;
+                    updateQuestion();
+                    document.getElementById('questionsModal').classList.add('hidden');
+                });
+                list.appendChild(button);
+            });
+        }
+
+        function updateQuestionsListHighlight() {
+            const buttons = document.getElementById('questionsList').children;
+            Array.from(buttons).forEach((button, index) => {
+                button.className = `w-10 h-10 rounded border ${
+                    index === currentQuestionIndex 
+                        ? 'bg-blue-500 text-white' 
+                        : answers.has(index)
+                            ? 'bg-green-100 border-green-500'
+                            : 'border-gray-300 hover:bg-gray-100'
+                }`;
+            });
+        }
+
+        // Modal controls
+        document.getElementById('questionListBtn').addEventListener('click', () => {
+            document.getElementById('questionsModal').classList.remove('hidden');
+        });
+
+        document.getElementById('closeModal').addEventListener('click', () => {
+            document.getElementById('questionsModal').classList.add('hidden');
+        });
+
+        // End Exam
+        document.getElementById('endExamBtn').addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to end the exam?')) return;
+
+            try {
+                const response = await fetch(`http://localhost:8000/end-exam/${sessionId}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) throw new Error('Failed to end exam');
+                
+                const result = await response.json();
+                window.location.href = `results.html?session=${sessionId}`;
+            } catch (error) {
+                alert('Error ending exam: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
